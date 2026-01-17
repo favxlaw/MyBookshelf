@@ -63,3 +63,84 @@
 // 		fmt.Printf("- %s by %s\n", book.Title, book.Author)
 // 	}
 // }
+
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/favxlaw/handlers"
+	"github.com/favxlaw/models"
+	"github.com/favxlaw/store"
+)
+
+func main() {
+	// Create store
+	bookStore := store.NewBookStore()
+
+	// Seed with initial data
+	seedBooks(bookStore)
+
+	// Create handler
+	bookHandler := handlers.NewBookHandler(bookStore)
+
+	// Register routes
+	http.Handle("/books", bookHandler)
+	http.Handle("/books/", bookHandler)
+	http.HandleFunc("/", homeHandler)
+
+	// Start server
+	fmt.Println("Server starting on http://localhost:8006")
+	fmt.Println("GET    /books       - List all books")
+	fmt.Println("POST   /books       - Add new book")
+	fmt.Println("GET    /books/{id}  - Get specific book")
+	fmt.Println("PUT    /books/{id}  - Update book")
+	fmt.Println("DELETE /books/{id}  - Delete book")
+	fmt.Println()
+	fmt.Println("Press Ctrl+C to stop")
+
+	http.ListenAndServe(":8006", nil)
+}
+
+func seedBooks(s *store.BookStore) {
+	s.Create(models.Book{
+		Title:     "The Pragmatic Programmer",
+		Author:    "Hunt & Thomas",
+		Status:    models.StatusReading,
+		Category:  "Software Engineering",
+		StartDate: time.Now(),
+	})
+
+	s.Create(models.Book{
+		Title:     "Clean Code",
+		Author:    "Robert C. Martin",
+		Status:    models.StatusToRead,
+		Category:  "Software Engineering",
+		StartDate: time.Now(),
+	})
+
+	s.Create(models.Book{
+		Title:     "Dune",
+		Author:    "Frank Herbert",
+		Status:    models.StatusReading,
+		Category:  "Science Fiction",
+		StartDate: time.Now(),
+	})
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	fmt.Fprintf(w, "Book Tracker API\n\n")
+	fmt.Fprintf(w, "Available Endpoints:\n")
+	fmt.Fprintf(w, "  GET    /books       - List all books\n")
+	fmt.Fprintf(w, "  POST   /books       - Add new book\n")
+	fmt.Fprintf(w, "  GET    /books/{id}  - Get specific book\n")
+	fmt.Fprintf(w, "  PUT    /books/{id}  - Update book\n")
+	fmt.Fprintf(w, "  DELETE /books/{id}  - Delete book\n")
+}
