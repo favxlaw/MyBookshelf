@@ -68,19 +68,22 @@ package main
 
 import (
 	"fmt"
-	"net/http"
-	"time"
-
 	"github.com/favxlaw/handlers"
 	"github.com/favxlaw/models"
 	"github.com/favxlaw/store"
+	"log"
+	"net/http"
+	"time"
 )
 
 func main() {
-	// Create store
-	bookStore := store.NewBookStore()
+	bookStore, err := store.NewSQLiteStore("./booktracker.db")
+	if err != nil {
+		log.Fatal("Failed to initialize database:", err)
+	}
+	defer bookStore.Close()
 
-	// Seed with initial data
+	// Seed with initial data that's only if the database is empty
 	seedBooks(bookStore)
 
 	// Create handler
@@ -104,14 +107,14 @@ func main() {
 	http.ListenAndServe(":8006", nil)
 }
 
-func seedBooks(s *store.BookStore) {
-	s.Create(models.Book{
-		Title:     "The Pragmatic Programmer",
-		Author:    "Hunt & Thomas",
-		Status:    models.StatusReading,
-		Category:  "Software Engineering",
-		StartDate: time.Now(),
-	})
+func seedBooks(s *store.SQLiteStore) {
+	// Only seed if database is empty
+	existing := s.GetAll()
+	if len(existing) > 0 {
+		return
+	}
+
+	fmt.Println("Seeding initial data...")
 
 	s.Create(models.Book{
 		Title:     "Clean Code",

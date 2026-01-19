@@ -7,21 +7,31 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"http"
 
 	"github.com/favxlaw/models"
-	"github.com/favxlaw/store"
+	// "github.com/favxlaw/store"
 )
 
-// BookHandler handles all book-related HTTP requests
 type BookHandler struct {
-	store *store.BookStore
+	store interface {
+		GetAll() []models.Book
+		GetByID(int) (*models.Book, error)
+		Create(models.Book) models.Book
+		Update(int, models.Book) error
+		Delete(int) error
+	}
 }
 
 // NewBookHandler creates a new book handler
-func NewBookHandler(store *store.BookStore) *BookHandler {
-	return &BookHandler{
-		store: store,
-	}
+func NewBookHandler(s interface {
+	GetAll() []models.Book
+	GetByID(int) (*models.Book, error)
+	Create(models.Book) models.Book
+	Update(int, models.Book) error
+	Delete(int) error
+}) *BookHandler {
+	return &BookHandler{store: s}
 }
 
 // ServeHTTP implements http.Handler interface
@@ -151,15 +161,16 @@ func (h *BookHandler) updateBook(w http.ResponseWriter, r *http.Request, id int)
 	}
 
 	// Update in store
-	err = h.store.Update(id, updatedBook)
-	if err != nil {
-		errorResponse(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updatedBook)
+err = h.store.Update(id, updatedBook)
+if err != nil {
+    errorResponse(w, err.Error(), http.StatusInternalServerError)
+    return
 }
+
+updatedBook.ID = id
+
+w.Header().Set("Content-Type", "application/json")
+json.NewEncoder(w).Encode(updatedBook)
 
 // deleteBook handles DELETE /books/{id}
 func (h *BookHandler) deleteBook(w http.ResponseWriter, _ *http.Request, id int) {
