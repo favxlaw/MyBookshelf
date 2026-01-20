@@ -29,9 +29,9 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	// Create table if it doesn't exist
-	err = createTable(db)
+	err = RunMigrations(db)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create table: %w", err)
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return &SQLiteStore{db: db}, nil
@@ -273,4 +273,54 @@ func scanBookRow(row *sql.Row) (models.Book, error) {
 	}
 
 	return book, nil
+}
+
+// GetByFilters returns books matching the provided filters
+func (s *SQLiteStore) GetByFilters(status, category, sortBy string) []models.Book {
+	query := `
+		SELECT id, title, author, status, category, notes, start_date, end_date 
+		FROM books
+		WHERE 1=1
+	`
+	args := []interface{}{}
+
+	// Add filters
+	if status != "" {
+		query += ` AND status = ?`
+		args = append(args, status)
+	}
+
+	if category != "" {
+		query += ` AND category = ?`
+		args = append(args, category)
+	}
+
+	// Add sorting
+	switch sortBy {
+	case "title":
+		query += ` ORDER BY title ASC`
+	case "author":
+		query += ` ORDER BY author ASC`
+	case "date":
+		query += ` ORDER BY start_date DESC`
+	default:
+		query += ` ORDER BY id DESC`
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return []models.Book{}
+	}
+	defer rows.Close()
+
+	var books []models.Book
+	for rows.Next() {
+		book, err := scanBook(rows)
+		if err != nil {
+			continue
+		}
+		books = append(books, book)
+	}
+
+	return books
 }

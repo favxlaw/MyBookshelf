@@ -7,30 +7,27 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"http"
 
 	"github.com/favxlaw/models"
-	// "github.com/favxlaw/store"
 )
 
-type BookHandler struct {
-	store interface {
-		GetAll() []models.Book
-		GetByID(int) (*models.Book, error)
-		Create(models.Book) models.Book
-		Update(int, models.Book) error
-		Delete(int) error
-	}
-}
-
-// NewBookHandler creates a new book handler
-func NewBookHandler(s interface {
+// BookStore defines the interface for book storage operations
+type BookStore interface {
 	GetAll() []models.Book
 	GetByID(int) (*models.Book, error)
+	GetByFilters(status, category, sortBy string) []models.Book
 	Create(models.Book) models.Book
 	Update(int, models.Book) error
 	Delete(int) error
-}) *BookHandler {
+}
+
+// BookHandler handles all book-related HTTP requests
+type BookHandler struct {
+	store BookStore
+}
+
+// NewBookHandler creates a new book handler
+func NewBookHandler(s BookStore) *BookHandler {
 	return &BookHandler{store: s}
 }
 
@@ -73,9 +70,22 @@ func (h *BookHandler) handleSingleBook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// getAllBooks handles GET /books
-func (h *BookHandler) getAllBooks(w http.ResponseWriter, _ *http.Request) {
-	books := h.store.GetAll()
+// getAllBooks handles GET /books with optional query parameters
+func (h *BookHandler) getAllBooks(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	query := r.URL.Query()
+	status := query.Get("status")
+	category := query.Get("category")
+	sortBy := query.Get("sort")
+
+	// Use database filtering if any filters provided
+	var books []models.Book
+	if status != "" || category != "" || sortBy != "" {
+		books = h.store.GetByFilters(status, category, sortBy)
+	} else {
+		books = h.store.GetAll()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(books)
 }
@@ -161,19 +171,25 @@ func (h *BookHandler) updateBook(w http.ResponseWriter, r *http.Request, id int)
 	}
 
 	// Update in store
-err = h.store.Update(id, updatedBook)
-if err != nil {
-    errorResponse(w, err.Error(), http.StatusInternalServerError)
-    return
+	err = h.store.Update(id, updatedBook)
+	if err != nil {
+		errorResponse(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch the updated book from database to return the exact stored state
+	book, err := h.store.GetByID(id)
+	if err != nil {
+		errorResponse(w, "Failed to fetch updated book", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(book)
 }
 
-updatedBook.ID = id
-
-w.Header().Set("Content-Type", "application/json")
-json.NewEncoder(w).Encode(updatedBook)
-
 // deleteBook handles DELETE /books/{id}
-func (h *BookHandler) deleteBook(w http.ResponseWriter, _ *http.Request, id int) {
+func (h *BookHandler) deleteBook(w http.ResponseWriter, r *http.Request, id int) {
 	err := h.store.Delete(id)
 	if err != nil {
 		errorResponse(w, "Book not found", http.StatusNotFound)
@@ -185,6 +201,7 @@ func (h *BookHandler) deleteBook(w http.ResponseWriter, _ *http.Request, id int)
 
 // Helper functions
 
+// extractID extracts the book ID from the URL path
 func extractID(path string) (int, error) {
 	idStr := strings.TrimPrefix(path, "/books/")
 	if idStr == "" || idStr == path {
@@ -199,6 +216,7 @@ func extractID(path string) (int, error) {
 	return id, nil
 }
 
+// validateBook validates book data
 func validateBook(book models.Book) error {
 	if book.Title == "" {
 		return fmt.Errorf("title is required")
@@ -232,6 +250,7 @@ func validateBook(book models.Book) error {
 	return nil
 }
 
+// errorResponse sends a JSON error response
 func errorResponse(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
