@@ -1,101 +1,45 @@
-// package main
-
-// import (
-// 	"fmt"
-// 	"github.com/favxlaw/library"
-// 	"github.com/favxlaw/models"
-// 	"time"
-// )
-
-// //func main() {
-// 	// Initialize empty library
-// 	myLibrary := []models.Book{}
-
-// 	// Add books
-// 	myLibrary = library.AddBook(myLibrary, models.Book{
-// 		Title:     "The Pragmatic Programmer",
-// 		Author:    "Hunt & Thomas",
-// 		Status:    models.StatusReading,
-// 		Category:  "Software Engineering",
-// 		StartDate: time.Now(),
-// 	})
-
-// 	myLibrary = library.AddBook(myLibrary, models.Book{
-// 		Title:     "Clean Code",
-// 		Author:    "Robert C. Martin",
-// 		Status:    models.StatusToRead,
-// 		Category:  "Software Engineering",
-// 		StartDate: time.Now(),
-// 	})
-
-// 	myLibrary = library.AddBook(myLibrary, models.Book{
-// 		Title:     "Dune",
-// 		Author:    "Frank Herbert",
-// 		Status:    models.StatusReading,
-// 		Category:  "Science Fiction",
-// 		StartDate: time.Now(),
-// 	})
-
-// 	// Display all books
-// 	library.ListAllBooks(myLibrary)
-
-// 	// Update a book status
-// 	fmt.Println("\n Updating 'The Pragmatic Programmer' to finished...")
-// 	library.UpdateBookStatus(myLibrary, "The Pragmatic Programmer", models.StatusFinished)
-// 	library.ListAllBooks(myLibrary)
-
-// 	// Delete a book
-// 	fmt.Println("\n  Deleting 'Clean Code'...")
-// 	myLibrary = library.DeleteBook(myLibrary, "Clean Code")
-// 	library.ListAllBooks(myLibrary)
-
-// 	// Filter by status
-// 	fmt.Println("\n Currently Reading:")
-// 	reading := library.FilterByStatus(myLibrary, models.StatusReading)
-// 	for _, book := range reading {
-// 		fmt.Printf("- %s\n", book.Title)
-// 	}
-
-// 	// Filter by category
-// 	fmt.Println("\n Software Engineering Books:")
-// 	techBooks := library.FilterByCategory(myLibrary, "Software Engineering")
-// 	for _, book := range techBooks {
-// 		fmt.Printf("- %s by %s\n", book.Title, book.Author)
-// 	}
-// }
-
 package main
 
 import (
 	"fmt"
-	"github.com/favxlaw/handlers"
-	"github.com/favxlaw/models"
-	"github.com/favxlaw/store"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/favxlaw/config"
+	"github.com/favxlaw/handlers"
+	"github.com/favxlaw/models"
+	"github.com/favxlaw/store"
 )
 
 func main() {
-	bookStore, err := store.NewSQLiteStore("./booktracker.db")
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Configuration error: %v", err)
+	}
+
+	log.Printf("Starting Book Tracker API")
+	log.Printf("Configuration:")
+	log.Printf("  Port: %s", cfg.Port)
+	log.Printf("  Database: %s", cfg.DBPath)
+	log.Printf("  Log Level: %s", cfg.LogLevel)
+	log.Println()
+
+	bookStore, err := store.NewSQLiteStore(cfg.DBPath)
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
 	defer bookStore.Close()
 
-	// Seed with initial data that's only if the database is empty
 	seedBooks(bookStore)
 
-	// Create handler
 	bookHandler := handlers.NewBookHandler(bookStore)
 
-	// Register routes
 	http.Handle("/books", bookHandler)
 	http.Handle("/books/", bookHandler)
 	http.HandleFunc("/", homeHandler)
 
-	// Start server
-	fmt.Println("Server starting on http://localhost:8006")
+	fmt.Println("Server starting on http://localhost:" + cfg.Port)
 	fmt.Println("GET    /books       - List all books")
 	fmt.Println("POST   /books       - Add new book")
 	fmt.Println("GET    /books/{id}  - Get specific book")
@@ -104,7 +48,14 @@ func main() {
 	fmt.Println()
 	fmt.Println("Press Ctrl+C to stop")
 
-	http.ListenAndServe(":8006", nil)
+	port := cfg.Port
+	if port[0] != ':' {
+		port = ":" + port
+	}
+
+	if err := http.ListenAndServe(port, nil); err != nil {
+		log.Fatalf("Server failed to start: %v", err)
+	}
 }
 
 func seedBooks(s *store.SQLiteStore) {
